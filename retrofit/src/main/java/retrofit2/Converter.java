@@ -15,15 +15,16 @@
  */
 package retrofit2;
 
-import com.squareup.okhttp.RequestBody;
-import com.squareup.okhttp.ResponseBody;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
 import retrofit2.http.Body;
 import retrofit2.http.Field;
 import retrofit2.http.FieldMap;
 import retrofit2.http.Header;
+import retrofit2.http.HeaderMap;
 import retrofit2.http.Part;
 import retrofit2.http.PartMap;
 import retrofit2.http.Path;
@@ -31,8 +32,9 @@ import retrofit2.http.Query;
 import retrofit2.http.QueryMap;
 
 /**
- * Convert objects to and from their representation in HTTP. Register a converter with Retrofit
- * using {@link Retrofit.Builder#addConverterFactory(Factory)}.
+ * Convert objects to and from their representation in HTTP. Instances are created by {@linkplain
+ * Factory a factory} which is {@linkplain Retrofit.Builder#addConverterFactory(Factory) installed}
+ * into the {@link Retrofit} instance.
  */
 public interface Converter<F, T> {
   T convert(F value) throws IOException;
@@ -56,8 +58,8 @@ public interface Converter<F, T> {
      * specified by {@link Body @Body}, {@link Part @Part}, and {@link PartMap @PartMap}
      * values.
      */
-    public Converter<?, RequestBody> requestBodyConverter(Type type, Annotation[] annotations,
-        Retrofit retrofit) {
+    public Converter<?, RequestBody> requestBodyConverter(Type type,
+        Annotation[] parameterAnnotations, Annotation[] methodAnnotations, Retrofit retrofit) {
       return null;
     }
 
@@ -65,10 +67,11 @@ public interface Converter<F, T> {
      * Returns a {@link Converter} for converting {@code type} to a {@link String}, or null if
      * {@code type} cannot be handled by this factory. This is used to create converters for types
      * specified by {@link Field @Field}, {@link FieldMap @FieldMap} values,
-     * {@link Header @Header}, {@link Path @Path}, {@link Query @Query}, and
-     * {@link QueryMap @QueryMap} values.
+     * {@link Header @Header}, {@link HeaderMap @HeaderMap}, {@link Path @Path},
+     * {@link Query @Query}, and {@link QueryMap @QueryMap} values.
      */
-    public Converter<?, String> stringConverter(Type type, Annotation[] annotations) {
+    public Converter<?, String> stringConverter(Type type, Annotation[] annotations,
+        Retrofit retrofit) {
       return null;
     }
   }

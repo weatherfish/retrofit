@@ -16,11 +16,11 @@
 package retrofit2.mock;
 
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import okhttp3.Request;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -28,12 +28,12 @@ import retrofit2.Response;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 final class BehaviorCall<T> implements Call<T> {
-  private final NetworkBehavior behavior;
-  private final ExecutorService backgroundExecutor;
-  private final Call<T> delegate;
+  final NetworkBehavior behavior;
+  final ExecutorService backgroundExecutor;
+  final Call<T> delegate;
 
   private volatile Future<?> task;
-  private volatile boolean canceled;
+  volatile boolean canceled;
   private volatile boolean executed;
 
   BehaviorCall(NetworkBehavior behavior, ExecutorService backgroundExecutor, Call<T> delegate) {
@@ -47,19 +47,25 @@ final class BehaviorCall<T> implements Call<T> {
     return new BehaviorCall<>(behavior, backgroundExecutor, delegate.clone());
   }
 
+  @Override public Request request() {
+    return delegate.request();
+  }
+
   @Override public void enqueue(final Callback<T> callback) {
+    if (callback == null) throw new NullPointerException("callback == null");
+
     synchronized (this) {
       if (executed) throw new IllegalStateException("Already executed");
       executed = true;
     }
     task = backgroundExecutor.submit(new Runnable() {
-      private boolean delaySleep() {
+      boolean delaySleep() {
         long sleepMs = behavior.calculateDelay(MILLISECONDS);
         if (sleepMs > 0) {
           try {
             Thread.sleep(sleepMs);
           } catch (InterruptedException e) {
-            callback.onFailure(new InterruptedIOException("canceled"));
+            callback.onFailure(BehaviorCall.this, new IOException("canceled"));
             return false;
           }
         }
@@ -68,22 +74,22 @@ final class BehaviorCall<T> implements Call<T> {
 
       @Override public void run() {
         if (canceled) {
-          callback.onFailure(new InterruptedIOException("canceled"));
+          callback.onFailure(BehaviorCall.this, new IOException("canceled"));
         } else if (behavior.calculateIsFailure()) {
           if (delaySleep()) {
-            callback.onFailure(behavior.failureException());
+            callback.onFailure(BehaviorCall.this, behavior.failureException());
           }
         } else {
           delegate.enqueue(new Callback<T>() {
-            @Override public void onResponse(final Response<T> response) {
+            @Override public void onResponse(Call<T> call, Response<T> response) {
               if (delaySleep()) {
-                callback.onResponse(response);
+                callback.onResponse(call, response);
               }
             }
 
-            @Override public void onFailure(final Throwable t) {
+            @Override public void onFailure(Call<T> call, Throwable t) {
               if (delaySleep()) {
-                callback.onFailure(t);
+                callback.onFailure(call, t);
               }
             }
           });
@@ -101,12 +107,12 @@ final class BehaviorCall<T> implements Call<T> {
     final AtomicReference<Throwable> failureRef = new AtomicReference<>();
     final CountDownLatch latch = new CountDownLatch(1);
     enqueue(new Callback<T>() {
-      @Override public void onResponse(Response<T> response) {
+      @Override public void onResponse(Call<T> call, Response<T> response) {
         responseRef.set(response);
         latch.countDown();
       }
 
-      @Override public void onFailure(Throwable t) {
+      @Override public void onFailure(Call<T> call, Throwable t) {
         failureRef.set(t);
         latch.countDown();
       }
@@ -114,7 +120,7 @@ final class BehaviorCall<T> implements Call<T> {
     try {
       latch.await();
     } catch (InterruptedException e) {
-      throw new InterruptedIOException("canceled");
+      throw new IOException("canceled");
     }
     Response<T> response = responseRef.get();
     if (response != null) return response;
